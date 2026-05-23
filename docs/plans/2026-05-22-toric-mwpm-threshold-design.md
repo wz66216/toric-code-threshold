@@ -6,11 +6,11 @@ Date: 2026-05-22
 
 Reproduce a concrete quantum-error-correction threshold result from the course materials: the two-dimensional toric/surface-code threshold under independent bit-flip noise and perfect syndrome measurement using minimum-weight perfect matching (MWPM). The intended numerical result is a crossing of logical-failure-rate curves near
 
-\[
+$$\[
 p_{c0}\approx 0.10,
-\]
+\]$$
 
-consistent with the zero-temperature/minimum-energy threshold reported by Wang, Harrington, and Preskill for the 2D random-bond Ising model (RBIM), approximately \(p_{c0}=0.1031\). This deliberately reproduces the minimum-energy decoder threshold, not the full maximum-likelihood/Nishimori-line threshold near \(p\approx 0.109\). The distinction is useful for the final report because it numerically demonstrates why the minimum-energy threshold is below the Nishimori-line ML threshold.
+consistent with the zero-temperature/minimum-energy threshold reported by Wang, Harrington, and Preskill for the 2D random-bond Ising model (RBIM), approximately \($p_{c0}=0.1031\$). This deliberately reproduces the minimum-energy decoder threshold, not the full maximum-likelihood/Nishimori-line threshold near \(p\approx 0.109\). The distinction is useful for the final report because it numerically demonstrates why the minimum-energy threshold is below the Nishimori-line ML threshold.
 
 ## Scientific Context
 
