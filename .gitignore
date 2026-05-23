@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# OpenCode / local tooling noise
+.opencode/
+.sisyphus/
+opencode.jsonc
+.opencode/package-lock.json
+
+# Generated experiment outputs (keep curated examples under version control only if moved elsewhere)
+outputs/
+
+# Local research/source materials not intended for public repo
+文章/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
