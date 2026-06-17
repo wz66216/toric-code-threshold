@@ -11,6 +11,7 @@ from networkx.algorithms.matching import min_weight_matching
 
 from .decoder import _defects_from_syndrome, decode_mwpm, toric_distance
 from .lattice import ToricChain, Vertex, random_error
+from .noisy import match_spacetime_events, sample_noisy_trial
 
 
 def _segment_points(a: Vertex, b: Vertex, L: int):
@@ -172,3 +173,81 @@ def save_trial_frames(L, p, seed, output_dir, dpi=150):
         for fig, _ in frames:
             plt.close(fig)
     return paths
+
+
+def save_spacetime_detection_plot(
+    L,
+    T,
+    p,
+    q,
+    seed,
+    path,
+    *,
+    decoder_p=None,
+    decoder_q=None,
+    dpi=150,
+):
+    decoder_p = p if decoder_p is None else decoder_p
+    decoder_q = q if decoder_q is None else decoder_q
+    total_error, events = sample_noisy_trial(L=L, T=T, p=p, q=q, seed=seed)
+    pairs = match_spacetime_events(events, L=L, p=decoder_p, q=decoder_q)
+
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig = plt.figure(figsize=(7, 6))
+    ax = fig.add_subplot(111, projection="3d")
+    try:
+        ax.set_title(
+            f"Spacetime Detection Events (L={L}, T={T}, p={p}, q={q})\n"
+            f"{len(events)} events, {'failure' if total_error.is_logical_failure() else 'no logical error before recovery'}"
+        )
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        ax.set_zlabel("t")
+        ax.set_xlim(-0.5, L - 0.5)
+        ax.set_ylim(-0.5, L - 0.5)
+        ax.set_zlim(-0.5, max(T, 1) - 0.5)
+        ax.set_xticks(range(L))
+        ax.set_yticks(range(L))
+        ax.set_zticks(range(T + 1))
+        ax.view_init(elev=22, azim=-55)
+
+        for t in range(T + 1):
+            alpha = 0.08 if t % 2 else 0.14
+            xs = [0, L - 1, L - 1, 0, 0]
+            ys = [0, 0, L - 1, L - 1, 0]
+            zs = [t] * 5
+            ax.plot(xs, ys, zs, color="gray", lw=0.8, alpha=alpha)
+
+        if events:
+            ax.scatter(
+                [event.x for event in events],
+                [event.y for event in events],
+                [event.t for event in events],
+                s=56,
+                color="crimson",
+                edgecolors="darkred",
+                depthshade=False,
+                label="detection event",
+            )
+        else:
+            ax.scatter([], [], [], s=56, color="crimson", label="detection event")
+
+        for index, (a, b) in enumerate(pairs):
+            ax.plot(
+                [a.x, b.x],
+                [a.y, b.y],
+                [a.t, b.t],
+                color="royalblue",
+                lw=1.8,
+                alpha=0.8,
+                label="MWPM pair" if index == 0 else None,
+            )
+
+        if pairs or events:
+            ax.legend(loc="upper left")
+        fig.tight_layout()
+        fig.savefig(output, dpi=dpi)
+    finally:
+        plt.close(fig)
+    return str(output)

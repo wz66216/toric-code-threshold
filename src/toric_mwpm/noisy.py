@@ -104,12 +104,12 @@ def _project_pair_to_recovery(a: DetectionEvent, b: DetectionEvent, L: int) -> T
     return shortest_path_chain(L, (earlier.x, earlier.y), (later.x, later.y))
 
 
-def decode_spacetime_mwpm(events, *, L: int, p: float, q: float) -> ToricChain:
+def match_spacetime_events(events, *, L: int, p: float, q: float) -> list[tuple[DetectionEvent, DetectionEvent]]:
     sorted_events = sorted(events)
     if len(sorted_events) % 2 != 0:
         raise ValueError("spacetime event list must contain an even number of events")
     if not sorted_events:
-        return ToricChain.empty(L)
+        return []
 
     space_weight = _likelihood_weight(p)
     time_weight = _likelihood_weight(q)
@@ -126,9 +126,13 @@ def decode_spacetime_mwpm(events, *, L: int, p: float, q: float) -> ToricChain:
     matching = min_weight_matching(graph, weight="weight")
     if len(matching) * 2 != len(sorted_events):
         raise ValueError("no finite perfect matching for the given p/q constraints")
+    return [(sorted_events[i], sorted_events[j]) for i, j in sorted(tuple(sorted(pair)) for pair in matching)]
+
+
+def decode_spacetime_mwpm(events, *, L: int, p: float, q: float) -> ToricChain:
     recovery = ToricChain.empty(L)
-    for i, j in sorted(tuple(sorted(pair)) for pair in matching):
-        recovery = recovery + _project_pair_to_recovery(sorted_events[i], sorted_events[j], L)
+    for a, b in match_spacetime_events(events, L=L, p=p, q=q):
+        recovery = recovery + _project_pair_to_recovery(a, b, L)
     return recovery
 
 
@@ -151,6 +155,20 @@ class NoisySimulationResult:
             return float("nan")
         rate = self.failure_rate
         return sqrt(rate * (1.0 - rate) / self.trials)
+
+    @property
+    def wilson_interval_95(self) -> tuple[float, float]:
+        if self.trials == 0:
+            return float("nan"), float("nan")
+        z = 1.959963984540054
+        n = self.trials
+        phat = self.failure_rate
+        denom = 1.0 + (z * z) / n
+        center = (phat + (z * z) / (2.0 * n)) / denom
+        margin = (z / denom) * sqrt((phat * (1.0 - phat) / n) + (z * z) / (4.0 * n * n))
+        low = max(0.0, center - margin)
+        high = min(1.0, center + margin)
+        return low, high
 
 
 def _validate_run_parameters(L: int, T: int, p: float, q: float, trials: int) -> None:
@@ -178,15 +196,35 @@ def _sample_noisy_history(*, L: int, T: int, p: float, q: float, rng: np.random.
     return cumulative, events
 
 
-def run_noisy_point(*, L: int, T: int | None = None, p: float, q: float | None = None, trials: int, seed: int | None = None) -> NoisySimulationResult:
+def sample_noisy_trial(*, L: int, T: int, p: float, q: float, seed: int | None = None):
+    _validate_run_parameters(L, T, p, q, trials=1)
+    rng = np.random.default_rng(seed)
+    return _sample_noisy_history(L=L, T=T, p=p, q=q, rng=rng)
+
+
+def run_noisy_point(
+    *,
+    L: int,
+    T: int | None = None,
+    p: float,
+    q: float | None = None,
+    trials: int,
+    seed: int | None = None,
+    decoder_p: float | None = None,
+    decoder_q: float | None = None,
+) -> NoisySimulationResult:
     T = L if T is None else T
     q = p if q is None else q
     _validate_run_parameters(L, T, p, q, trials)
+    decoder_p = p if decoder_p is None else decoder_p
+    decoder_q = q if decoder_q is None else decoder_q
+    _likelihood_weight(decoder_p)
+    _likelihood_weight(decoder_q)
     rng = np.random.default_rng(seed)
     failures = 0
     for _ in range(trials):
         total_error, events = _sample_noisy_history(L=L, T=T, p=p, q=q, rng=rng)
-        recovery = decode_spacetime_mwpm(events, L=L, p=p, q=q)
+        recovery = decode_spacetime_mwpm(events, L=L, p=decoder_p, q=decoder_q)
         if (total_error + recovery).is_logical_failure():
             failures += 1
     return NoisySimulationResult(L=L, T=T, p=p, q=q, trials=trials, failures=failures)
@@ -210,9 +248,10 @@ def write_noisy_csv(results, path: str | Path) -> None:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["L", "T", "p", "q", "trials", "failures", "failure_rate", "standard_error"])
+        writer = csv.DictWriter(handle, fieldnames=["L", "T", "p", "q", "trials", "failures", "failure_rate", "standard_error", "ci95_low", "ci95_high"])
         writer.writeheader()
         for result in results:
+            ci95_low, ci95_high = result.wilson_interval_95
             writer.writerow({
                 "L": result.L,
                 "T": result.T,
@@ -222,6 +261,8 @@ def write_noisy_csv(results, path: str | Path) -> None:
                 "failures": result.failures,
                 "failure_rate": result.failure_rate,
                 "standard_error": result.standard_error,
+                "ci95_low": ci95_low,
+                "ci95_high": ci95_high,
             })
 
 
@@ -237,7 +278,14 @@ def plot_noisy_results(results, path: str | Path) -> None:
             grouped.setdefault((result.L, result.T), []).append(result)
         for (L, T) in sorted(grouped):
             subset = sorted(grouped[(L, T)], key=lambda r: r.p)
-            ax.errorbar([r.p for r in subset], [r.failure_rate for r in subset], yerr=[r.standard_error for r in subset], marker="o", capsize=3, label=f"L={L}, T={T}")
+            lowers = []
+            uppers = []
+            for result in subset:
+                low, high = result.wilson_interval_95
+                rate = result.failure_rate
+                lowers.append(max(0.0, rate - low))
+                uppers.append(max(0.0, high - rate))
+            ax.errorbar([r.p for r in subset], [r.failure_rate for r in subset], yerr=[lowers, uppers], marker="o", capsize=3, label=f"L={L}, T={T}")
         ax.set_xlabel("p")
         ax.set_ylabel("failure rate")
         if grouped:

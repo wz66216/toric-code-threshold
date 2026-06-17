@@ -46,6 +46,40 @@ $env:PYTHONPATH="src"; python scripts/run_threshold.py --sizes 6,8,10,12 --p-val
 
 The `toric_mwpm.simulation.estimate_crossing` function uses a simple heuristic (nearest-difference between smallest and largest L). For the report, interpret the crossing visually: where the curves for increasing L switch from "larger L → lower failure rate" to "larger L → higher failure rate".
 
+## Final course-report analysis
+
+Run the final noisy crossing sweep:
+
+```powershell
+python scripts/run_noisy_threshold.py --sizes 4,6,8 --p-values 0.024,0.026,0.028,0.030,0.032,0.034,0.036,0.038,0.040,0.042 --trials 1000 --seed 20260522 --csv outputs/noisy_crossing_fine.csv --figure outputs/noisy_crossing_fine.png
+```
+
+Run the fixed-size measurement sensitivity sweep:
+
+```powershell
+python scripts/run_measurement_sensitivity.py --L 6 --T 6 --p-values 0.020,0.025,0.030,0.035,0.040 --q-ratios 0.5,1.0,2.0 --trials 1000 --seed 20260522 --csv outputs/measurement_noise_sensitivity.csv
+```
+
+Run a decoder-mismatch scan, where the true measurement noise is `q=p` but the decoder assumes different `q_decode` values:
+
+```powershell
+python scripts/run_decoder_mismatch.py --L 6 --T 6 --p-values 0.025,0.030,0.035,0.040 --true-q-ratio 1.0 --decoder-q-ratios 0.5,1.0,2.0 --trials 1000 --seed 20260522 --csv outputs/decoder_mismatch.csv
+```
+
+Generate a 3D spacetime detection-event visualization for the noisy-syndrome discussion:
+
+```powershell
+python scripts/plot_spacetime_detection.py --L 6 --T 6 --p 0.03 --q 0.03 --seed 42 --figure outputs/report/spacetime_detection.png
+```
+
+Analyze all final report artifacts:
+
+```powershell
+python scripts/analyze_report_results.py --perfect-csv outputs/better_threshold.csv --noisy-csv outputs/noisy_crossing_fine.csv --sensitivity-csv outputs/measurement_noise_sensitivity.csv --mismatch-csv outputs/decoder_mismatch.csv --spacetime-figure outputs/report/spacetime_detection.png --out-dir outputs/report
+```
+
+Safe wording for the report: finite-size apparent crossing, not precision WHP reproduction; q-ratio sensitivity is fixed-size logical-failure sensitivity, not a threshold shift.
+
 ## Error correction visualization
 
 Generate a 5-frame visualization of a single trial:

@@ -9,6 +9,7 @@ from toric_mwpm.noisy import (
     detection_events_from_measurements,
     measured_syndrome_history,
     decode_spacetime_mwpm,
+    match_spacetime_events,
     spacetime_distance,
     run_noisy_point,
     run_noisy_sweep,
@@ -67,6 +68,14 @@ def test_decode_spacetime_mwpm_empty_events_returns_empty_chain():
     assert recovery.logical_parity() == (False, False)
 
 
+def test_match_spacetime_events_returns_event_pairs():
+    events = [DetectionEvent(0, 0, 0), DetectionEvent(0, 0, 1)]
+
+    pairs = match_spacetime_events(events, L=4, p=0.03, q=0.03)
+
+    assert pairs == [(DetectionEvent(0, 0, 0), DetectionEvent(0, 0, 1))]
+
+
 def test_decode_spacetime_mwpm_with_single_round_data_error_matches_static_decoder():
     L = 4
     error = chain_from_edges(L, horizontal_edges=((1, 2),))
@@ -123,6 +132,17 @@ def test_zero_noise_point_has_no_failures():
     assert result == NoisySimulationResult(L=4, T=4, p=0.0, q=0.0, trials=5, failures=0)
     assert result.failure_rate == 0.0
     assert result.standard_error == 0.0
+    low, high = result.wilson_interval_95
+    assert 0.0 <= low < high
+    assert high > 0.0
+
+
+def test_run_noisy_point_accepts_decoder_mismatch_parameters():
+    result = run_noisy_point(L=4, T=4, p=0.02, q=0.02, decoder_p=0.02, decoder_q=0.04, trials=3, seed=123)
+
+    assert result.L == 4
+    assert result.q == 0.02
+    assert 0 <= result.failures <= 3
 
 
 def test_noisy_sweep_is_reproducible_with_seed():
@@ -140,7 +160,7 @@ def test_write_noisy_csv_schema(tmp_path):
 
     with output.open(newline="") as handle:
         reader = csv.DictReader(handle)
-        assert reader.fieldnames == ["L", "T", "p", "q", "trials", "failures", "failure_rate", "standard_error"]
+        assert reader.fieldnames == ["L", "T", "p", "q", "trials", "failures", "failure_rate", "standard_error", "ci95_low", "ci95_high"]
         rows = list(reader)
 
     assert rows[0]["L"] == "4"
@@ -151,6 +171,17 @@ def test_write_noisy_csv_schema(tmp_path):
     assert rows[0]["failures"] == "1"
     assert float(rows[0]["failure_rate"]) == 0.1
     assert float(rows[0]["standard_error"]) == float((0.1 * 0.9 / 10) ** 0.5)
+    assert float(rows[0]["ci95_low"]) < 0.1
+    assert float(rows[0]["ci95_high"]) > 0.1
+
+
+def test_wilson_interval_95_is_sensible_for_small_counts():
+    result = NoisySimulationResult(L=4, T=4, p=0.02, q=0.02, trials=10, failures=1)
+
+    low, high = result.wilson_interval_95
+
+    assert 0.0 < low < result.failure_rate < high < 1.0
+    assert high - low > 0.0
 
 
 def test_plot_noisy_results_groups_by_l_and_t(tmp_path):
@@ -177,6 +208,43 @@ def test_plot_noisy_results_writes_file_and_closes_figures(tmp_path):
         NoisySimulationResult(L=3, T=3, p=0.03, q=0.03, trials=10, failures=1),
     ]
     output = tmp_path / "noisy.png"
+    plot_noisy_results(results, output)
+
+    assert output.exists()
+    assert plt.get_fignums() == []
+
+
+def test_plot_noisy_results_uses_asymmetric_error_bars(monkeypatch, tmp_path):
+    import matplotlib.axes
+
+    captured = {}
+
+    original_errorbar = matplotlib.axes.Axes.errorbar
+
+    def capture_errorbar(self, *args, **kwargs):
+        captured["yerr"] = kwargs.get("yerr")
+        return original_errorbar(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "errorbar", capture_errorbar)
+
+    results = [NoisySimulationResult(L=3, T=3, p=0.02, q=0.02, trials=10, failures=1)]
+    output = tmp_path / "noisy.png"
+
+    plot_noisy_results(results, output)
+
+    yerr = captured["yerr"]
+    assert isinstance(yerr, list)
+    assert len(yerr) == 2
+    assert yerr[0][0] != yerr[1][0]
+    assert output.exists()
+
+
+def test_plot_noisy_results_handles_all_failures_and_closes_figures(tmp_path):
+    import matplotlib.pyplot as plt
+
+    results = [NoisySimulationResult(L=3, T=3, p=0.02, q=0.02, trials=10, failures=10)]
+    output = tmp_path / "all_failures.png"
+
     plot_noisy_results(results, output)
 
     assert output.exists()

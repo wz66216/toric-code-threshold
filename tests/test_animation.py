@@ -4,7 +4,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-from toric_mwpm.animation import generate_trial_frames, save_trial_frames
+from toric_mwpm.animation import generate_trial_frames, save_spacetime_detection_plot, save_trial_frames
 
 
 def test_generate_trial_frames_returns_five_frames():
@@ -36,3 +36,11 @@ def test_no_error_case_produces_empty_syndrome_and_success():
     assert len(frames) == 5
     assert "0 defects" in titles[1]
     assert "SUCCESS" in titles[4]
+
+
+def test_save_spacetime_detection_plot_creates_png(tmp_path):
+    path = save_spacetime_detection_plot(4, 4, 0.08, 0.08, 42, tmp_path / "spacetime.png", dpi=72)
+
+    assert path.endswith("spacetime.png")
+    assert Path(path).exists()
+    assert Path(path).stat().st_size > 0
