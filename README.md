@@ -1,5 +1,8 @@
 # Toric Code MWPM Threshold Reproduction
 
+This repository is a Python simulation toolkit for toric-code decoding with
+minimum-weight perfect matching under perfect and noisy syndrome measurements.
+
 This project numerically reproduces the two-dimensional toric-code minimum-weight decoding threshold under independent bit-flip noise and perfect syndrome measurement.
 
 The simulation generates random error chains, computes the syndrome, decodes with minimum-weight perfect matching, and checks whether the combined error-plus-recovery chain is homologically nontrivial. The resulting logical-failure-rate curves cross near `p≈0.10`, consistent with the zero-temperature/minimum-energy RBIM threshold reported by Wang, Harrington, and Preskill.
